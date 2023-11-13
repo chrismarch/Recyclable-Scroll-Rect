@@ -33,6 +33,7 @@ namespace PolyAndCode.UI
         SerializedProperty _padding;
         SerializedProperty _spacing;
         SerializedProperty _type;
+        SerializedProperty _verticalScrollbar;
 
         AnimBool m_ShowElasticity;
         AnimBool m_ShowDecelerationRate;
@@ -50,7 +51,7 @@ namespace PolyAndCode.UI
             m_ScrollSensitivity = serializedObject.FindProperty("m_ScrollSensitivity");
             m_Viewport = serializedObject.FindProperty("m_Viewport");
             m_OnValueChanged = serializedObject.FindProperty("m_OnValueChanged");
-
+            
             //Inherited
             _protoTypeCell = serializedObject.FindProperty("PrototypeCell");
             _selfInitialize = serializedObject.FindProperty("SelfInitialize");
@@ -58,6 +59,7 @@ namespace PolyAndCode.UI
             _padding = serializedObject.FindProperty("Padding");
             _spacing = serializedObject.FindProperty("Spacing");
             _type = serializedObject.FindProperty("IsGrid");
+            _verticalScrollbar = serializedObject.FindProperty("VerticalScrollbar");
 
             m_ShowElasticity = new AnimBool(Repaint);
             m_ShowDecelerationRate = new AnimBool(Repaint);
@@ -127,6 +129,7 @@ namespace PolyAndCode.UI
             EditorGUILayout.Space();
 
             EditorGUILayout.PropertyField(m_OnValueChanged);
+            EditorGUILayout.PropertyField(_verticalScrollbar);
 
             serializedObject.ApplyModifiedProperties();
         }

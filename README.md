@@ -7,6 +7,18 @@ https://polyandcode.com || https://www.facebook.com/Polyandcode || https://www.i
 ###Original version Available [here](https://assetstore.unity.com/packages/tools/gui/recyclable-scroll-rect-178560) on the Unity Asset Store
 
  ## Summary
+
+<b>UPDATE (Chris March): 
+* forked from https://github.com/ParkingLotGames/Recyclable-Scroll-Rect
+* Added support for non-square cells
+* Added partial support for scrollbars (vertical & non-interactive, horizontal support is incomplete)
+* Added guards against invalid calls to RecyclableScrollRect.Initialize and ReloadData
+* Added callbacks for completion of RecyclableScrollRect.Initialize and ReloadData
+* Added RecyclableScrollRect.ResetCurrentCells, which calls SetCell again
+* Fixed incorrect Content size when Initialize/ReloadData is called before a Canvas can resize for safe zone
+* Fixed Gizmo rendering and add "virtual" content bounds gizmo
+</b><br><br>
+
 <b>UPDATE: Merged instant scroll to cell by index for vertical recycling by CosmicElysium and padding and offset to recycling view by KeyboardRules.
 Made Available as a git package, confirmed working in 2018.2.
 </b><br><br>

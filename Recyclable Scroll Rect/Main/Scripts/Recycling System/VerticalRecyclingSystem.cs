@@ -39,7 +39,7 @@ namespace PolyAndCode.UI
 
         //Cached zero vector 
         private Vector2 zeroVector = Vector2.zero;
-
+        
         #region INIT
         public VerticalRecyclingSystem(RectTransform prototypeCell, RectTransform viewport, RectTransform content, RectOffset padding, float spacing, IRecyclableScrollRectDataSource dataSource, bool isGrid, int coloumns)
         {
@@ -63,6 +63,7 @@ namespace PolyAndCode.UI
         public override IEnumerator InitCoroutine(System.Action onInitialized)
         {
             _initializing = true;
+            yield return null; // wait for canvas scaling due to safe zone, etc.
             SetTopAnchor(Content);
             Content.anchoredPosition = Vector3.zero;
             yield return null;
@@ -91,7 +92,13 @@ namespace PolyAndCode.UI
         private void SetRecyclingBounds()
         {
             Viewport.GetWorldCorners(_corners);
-            float threshHold = RecyclingThreshold * (_corners[2].y - _corners[0].y);
+            float threshHold = (_corners[2].y - _corners[0].y);
+            float denominator = _cellHeight * Viewport.lossyScale.y;
+            if (denominator > 0f)
+            {
+                RecyclingThreshold = RECYCLING_THRESHOLD_TUNING_MULTIPLIER * threshHold / denominator;
+            }
+            threshHold *= RecyclingThreshold;
             _recyclableViewBounds.min = new Vector3(_corners[0].x, _corners[0].y - threshHold);
             _recyclableViewBounds.max = new Vector3(_corners[2].x, _corners[2].y + threshHold);
         }
@@ -245,6 +252,91 @@ namespace PolyAndCode.UI
         }
 
         /// <summary>
+        /// Calls SetCell on all current cells
+        /// </summary>
+        public override void ResetCurrentCells()
+        {
+            int currentCellIndex = topMostCellIndex;
+            int scrollIndex = currentItemCount - _cellPool.Count;
+
+            for (int i = 0; i < _cachedCells.Count; i++)
+            {
+                DataSource.SetCell(_cachedCells[currentCellIndex], scrollIndex + i);
+                if (currentCellIndex == _cachedCells.Count - 1)
+                    currentCellIndex = 0;
+                else
+                    currentCellIndex++;
+            }
+        }
+
+#region scrollbars
+        /// <summary>
+        /// Calculates the scrolling position parameter on [0, 1]
+        /// </summary>
+        /// <returns>the scrolling position parameter on [0, 1]</returns>
+        public override float CalcNormalizedScrollPosition()
+        {
+            Bounds virtualContentBounds = CalcVirtualContentBounds();
+            Viewport.GetWorldCorners(_viewWorldCorners);
+            Bounds viewBounds = CalcBounds(_viewWorldCorners);
+            
+            if ((virtualContentBounds.size.y <= viewBounds.size.y) || Mathf.Approximately(virtualContentBounds.size.y, viewBounds.size.y))
+                return (viewBounds.min.y > virtualContentBounds.min.y) ? 1 : 0;
+
+            return (viewBounds.min.y - virtualContentBounds.min.y) / (virtualContentBounds.size.y - viewBounds.size.y);
+        }
+
+        /// <summary>
+        /// Calculates a scrollbar size parameter on [0, 1] given how much scrolling is needed to see all the cells
+        /// </summary>
+        /// <returns>a scrollbar size parameter on [0, 1]</returns>
+        public override float CalcNormalizedScrollbarSize()
+        {
+            int itemCount = DataSource.GetItemCount();
+            return itemCount <= 0 ? 1 : _cellPool.Count / (float) itemCount;
+        }
+
+        /// <summary>
+        /// Calculates the size of the content as if it had been sized and filled without recycling
+        /// </summary>
+        /// <returns>World space bounds for the "virtual" content rectTransform</returns>
+        protected override Bounds CalcVirtualContentBounds()
+        {
+            if (Content == null)
+            {
+                return new Bounds();
+            }
+            
+            Content.GetWorldCorners(_contentWorldCorners);
+            Bounds contentBounds = CalcBounds(_contentWorldCorners);
+
+            if (_cellPool != null)
+            {
+                float lossyScale = Content.lossyScale.y;
+                int numVirtRowsAboveContent =
+                    (int) Mathf.Ceil((currentItemCount - _cellPool.Count) / (float) _coloumns);
+                float sizeVirtRowsAboveContent = numVirtRowsAboveContent * (_cellHeight + Spacing) * lossyScale;
+
+                int numVirtRowsBelowContent =
+                    (int) Mathf.Ceil((DataSource.GetItemCount() - currentItemCount) / (float) _coloumns);
+                float sizeVirtRowsBelowContent = numVirtRowsBelowContent * (_cellHeight + Spacing) * lossyScale;
+
+                /*
+                Debug.LogFormat("{0}, {1}, {2}, {3}, {4}", sizeRowsHiddenAbove, sizeRowsHiddenBelow, numRowsHiddenAbove, 
+                                numRowsHiddenBelow, numRows);
+                */
+
+                Vector3 min = contentBounds.min, max = contentBounds.max;
+                max.y += sizeVirtRowsAboveContent;
+                min.y -= sizeVirtRowsBelowContent;
+                contentBounds.SetMinMax(min, max);
+            }
+
+            return contentBounds;
+        }
+#endregion scrollbars
+
+        /// <summary>
         /// Recycles cells from top to bottom in the List heirarchy
         /// </summary>
         private Vector2 RecycleTopToBottom()
@@ -333,7 +425,6 @@ namespace PolyAndCode.UI
             //Recycle until cell at bottom is avaiable and current item count is greater than cellpool size
             while (_cellPool[bottomMostCellIndex].MaxY() < _recyclableViewBounds.min.y && currentItemCount > _cellPool.Count)
             {
-
                 if (IsGrid)
                 {
                     if (--_topMostCellColoumn < 0)
@@ -426,12 +517,15 @@ namespace PolyAndCode.UI
         #endregion
 
         #region TESTING
-        public void OnDrawGizmos()
+        public override void OnDrawGizmos()
         {
             Gizmos.color = Color.green;
             Gizmos.DrawLine(_recyclableViewBounds.min - new Vector3(2000, 0), _recyclableViewBounds.min + new Vector3(2000, 0));
             Gizmos.color = Color.red;
             Gizmos.DrawLine(_recyclableViewBounds.max - new Vector3(2000, 0), _recyclableViewBounds.max + new Vector3(2000, 0));
+            Gizmos.color = Color.blue;
+            Bounds virtualContentBounds = CalcVirtualContentBounds();
+            Gizmos.DrawWireCube(virtualContentBounds.center, virtualContentBounds.size);
         }
         #endregion
 

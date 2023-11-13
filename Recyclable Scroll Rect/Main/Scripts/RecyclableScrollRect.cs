@@ -35,6 +35,8 @@ namespace PolyAndCode.UI
         public RectOffset Padding;
         public float Spacing;
 
+        public Scrollbar VerticalScrollbar;
+
         //Segments : coloums for vertical and rows for horizontal.
         public int Segments
         {
@@ -52,7 +54,8 @@ namespace PolyAndCode.UI
 
         private RecyclingSystem _recyclingSystem;
         private Vector2 _prevAnchoredPos;
-
+        private bool _initCoroutineRunning;
+        
         protected override void Start()
         {
             //defafult(built-in) in scroll rect can have both directions enabled, Recyclable scroll rect can be scrolled in only one direction.
@@ -68,35 +71,58 @@ namespace PolyAndCode.UI
         /// <summary>
         /// Initialization when selfInitalize is true. Assumes that data source is set in controller's Awake.
         /// </summary>
-        private void Initialize()
+        private void Initialize(Action onInitialized = null)
         {
-            //Contruct the recycling system.
-            if (Direction == DirectionType.Vertical)
+            if (!IsInitialized() && !_initCoroutineRunning)
             {
-                _recyclingSystem = new VerticalRecyclingSystem(PrototypeCell, viewport, content, Padding, Spacing, DataSource, IsGrid, Segments);
-            }
-            else if (Direction == DirectionType.Horizontal)
-            {
-                _recyclingSystem = new HorizontalRecyclingSystem(PrototypeCell, viewport, content, Padding, Spacing, DataSource, IsGrid, Segments);
-            }
-            vertical = Direction == DirectionType.Vertical;
-            horizontal = Direction == DirectionType.Horizontal;
+                //Contruct the recycling system.
+                if (Direction == DirectionType.Vertical)
+                {
+                    _recyclingSystem = new VerticalRecyclingSystem(PrototypeCell, viewport, content, Padding, Spacing,
+                                                                   DataSource, IsGrid, Segments);
+                }
+                else if (Direction == DirectionType.Horizontal)
+                {
+                    _recyclingSystem = new HorizontalRecyclingSystem(PrototypeCell, viewport, content, Padding, Spacing,
+                                                                     DataSource, IsGrid, Segments);
+                }
 
-            _prevAnchoredPos = content.anchoredPosition;
-            onValueChanged.RemoveListener(OnValueChangedListener);
-            //Adding listener after pool creation to avoid any unwanted recycling behaviour.(rare scenerio)
-            StartCoroutine(_recyclingSystem.InitCoroutine(() =>
-                                                               onValueChanged.AddListener(OnValueChangedListener)
-                                                              ));
+                vertical = Direction == DirectionType.Vertical;
+                horizontal = Direction == DirectionType.Horizontal;
+
+                _prevAnchoredPos = content.anchoredPosition;
+                onValueChanged.RemoveListener(OnValueChangedListener);
+                _initCoroutineRunning = true;
+                //Adding listener after pool creation to avoid any unwanted recycling behaviour.(rare scenerio)
+                StartCoroutine(_recyclingSystem.InitCoroutine(() =>
+                                                              {
+                                                                  onValueChanged.AddListener(OnValueChangedListener);
+                                                                  if (onInitialized != null)
+                                                                  {
+                                                                      onInitialized();
+                                                                  }
+                                                                  _initCoroutineRunning = false;
+                                                              }
+                                                             ));
+            }
         }
 
         /// <summary>
         /// public API for Initializing when datasource is not set in controller's Awake. Make sure selfInitalize is set to false. 
         /// </summary>
-        public void Initialize(IRecyclableScrollRectDataSource dataSource)
+        public void Initialize(IRecyclableScrollRectDataSource dataSource, Action onInitialized = null)
         {
             DataSource = dataSource;
-            Initialize();
+            Initialize(onInitialized);
+        }
+
+        /// <summary>
+        /// Determine if this RecyclableScrollRect has started or finished initializing
+        /// </summary>
+        /// <returns>true if this RecyclableScrollRect has started or finished initializing</returns>
+        public bool IsInitialized()
+        {
+            return _recyclingSystem != null;
         }
 
         /// <summary>
@@ -109,6 +135,8 @@ namespace PolyAndCode.UI
             Vector2 dir = content.anchoredPosition - _prevAnchoredPos;
             m_ContentStartPosition += _recyclingSystem.OnValueChangedListener(dir);
             _prevAnchoredPos = content.anchoredPosition;
+
+            UpdateScrollbars();
         }
 
         /// <summary>
@@ -120,29 +148,68 @@ namespace PolyAndCode.UI
         }
 
         /// <summary>
+        /// Calls SetCell on all current cells
+        /// </summary>
+        public void ResetCurrentCells()
+        {
+            _recyclingSystem.ResetCurrentCells();
+        }
+
+        /// <summary>
         ///Reloads the data. Call this if a new datasource is assigned.
         /// </summary>
-        public void ReloadData()
+        public void ReloadData(Action onDataReloaded = null)
         {
-            ReloadData(DataSource);
+            ReloadData(DataSource, onDataReloaded);
         }
 
         /// <summary>
         /// Overloaded ReloadData with dataSource param
         ///Reloads the data. Call this if a new datasource is assigned.
         /// </summary>
-        public void ReloadData(IRecyclableScrollRectDataSource dataSource)
+        public void ReloadData(IRecyclableScrollRectDataSource dataSource, Action onDataReloaded = null)
         {
-            if (_recyclingSystem != null)
+            if (IsInitialized() && this.gameObject.activeInHierarchy && !_initCoroutineRunning)
             {
                 StopMovement();
                 onValueChanged.RemoveListener(OnValueChangedListener);
                 _recyclingSystem.DataSource = dataSource;
+                _initCoroutineRunning = true;
                 StartCoroutine(_recyclingSystem.InitCoroutine(() =>
-                                                               onValueChanged.AddListener(OnValueChangedListener)
-                                                              ));
+                                                              {
+                                                                  onValueChanged.AddListener(OnValueChangedListener);
+                                                                  UpdateScrollbars();
+                                                                  if (onDataReloaded != null)
+                                                                  {
+                                                                      onDataReloaded();
+                                                                  }
+                                                                  _initCoroutineRunning = false;
+                                                              }
+                                                             ));
                 _prevAnchoredPos = content.anchoredPosition;
             }
         }
+
+        private void UpdateScrollbars()
+        {
+            if (_recyclingSystem != null)
+            {
+                if (VerticalScrollbar != null)
+                {
+                    VerticalScrollbar.value = _recyclingSystem.CalcNormalizedScrollPosition();
+                    VerticalScrollbar.size = _recyclingSystem.CalcNormalizedScrollbarSize();
+                }
+            }
+        }
+        
+        #region  TESTING
+        void OnDrawGizmos()
+        {
+            if (_recyclingSystem != null)
+            {
+                _recyclingSystem.OnDrawGizmos();
+            }
+        }
+        #endregion
     }
 }

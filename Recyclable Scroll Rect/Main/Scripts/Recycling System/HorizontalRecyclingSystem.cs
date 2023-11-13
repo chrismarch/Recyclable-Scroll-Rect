@@ -86,7 +86,13 @@ namespace PolyAndCode.UI
         private void SetRecyclingBounds()
         {
             Viewport.GetWorldCorners(_corners);
-            float threshHold = RecyclingThreshold * (_corners[2].x - _corners[0].x);
+            float threshHold = (_corners[2].x - _corners[0].x);
+            float denominator = _cellWidth * Viewport.lossyScale.x;
+            if (denominator > 0f)
+            {
+                RecyclingThreshold = RECYCLING_THRESHOLD_TUNING_MULTIPLIER * threshHold / denominator;
+            }
+            threshHold *= RecyclingThreshold;
             _recyclableViewBounds.min = new Vector3(_corners[0].x - threshHold, _corners[0].y);
             _recyclableViewBounds.max = new Vector3(_corners[2].x + threshHold, _corners[2].y);
         }
@@ -96,6 +102,94 @@ namespace PolyAndCode.UI
             throw new NotImplementedException();
         }
 
+        /// <summary>
+        /// Calls SetCell on all current cells
+        /// </summary>
+        public override void ResetCurrentCells()
+        {
+            int currentCellIndex = leftMostCellIndex; // FIXME untested adaptation of VerticalRecyclingSystem method
+            int scrollIndex = currentItemCount - _cellPool.Count;
+
+            for (int i = 0; i < _cachedCells.Count; i++)
+            {
+                DataSource.SetCell(_cachedCells[currentCellIndex], scrollIndex + i);
+                if (currentCellIndex == _cachedCells.Count - 1)
+                    currentCellIndex = 0;
+                else
+                    currentCellIndex++;
+            }
+        }
+        
+#region scrollbars
+        /// <summary>
+        /// Calculates the scrolling position parameter on [0, 1]
+        /// </summary>
+        /// <returns>the scrolling position parameter on [0, 1]</returns>
+        public override float CalcNormalizedScrollPosition()
+        {
+            // FIXME untested adaptation of VerticalRecyclingSystem method
+            Bounds virtualContentBounds = CalcVirtualContentBounds();
+            Viewport.GetWorldCorners(_viewWorldCorners);
+            Bounds viewBounds = CalcBounds(_viewWorldCorners);
+            
+            if ((virtualContentBounds.size.x <= viewBounds.size.x) || Mathf.Approximately(virtualContentBounds.size.x, viewBounds.size.x))
+                return (viewBounds.min.x > virtualContentBounds.min.x) ? 1 : 0;
+
+            return (viewBounds.min.x - virtualContentBounds.min.x) / (virtualContentBounds.size.x - viewBounds.size.x);
+        }
+
+        /// <summary>
+        /// Calculates a scrollbar size parameter on [0, 1] given how much scrolling is needed to see all the cells
+        /// </summary>
+        /// <returns>a scrollbar size parameter on [0, 1]</returns>
+        public override float CalcNormalizedScrollbarSize()
+        {
+            // FIXME untested adaptation of VerticalRecyclingSystem method
+            int itemCount = DataSource.GetItemCount();
+            return itemCount <= 0 ? 1 : _cellPool.Count / (float) itemCount;
+        }
+
+        /// <summary>
+        /// Calculates the size of the content as if it had been sized and filled without recycling
+        /// </summary>
+        /// <returns>World space bounds for the "virtual" content rectTransform</returns>
+        protected override Bounds CalcVirtualContentBounds()
+        {
+            // FIXME untested adaptation of VerticalRecyclingSystem method
+            if (Content == null)
+            {
+                return new Bounds();
+            }
+            
+            Content.GetWorldCorners(_contentWorldCorners);
+            Bounds contentBounds = CalcBounds(_contentWorldCorners);
+
+            if (_cellPool != null)
+            {
+                float lossyScale = Content.lossyScale.x;
+                int numVirtRowsBeforeContent =
+                    (int) Mathf.Ceil((currentItemCount - _cellPool.Count) / (float) _rows);
+                float sizeVirtRowsBeforeContent = numVirtRowsBeforeContent * (_cellHeight + Spacing) * lossyScale;
+
+                int numVirtRowsAfterContent =
+                    (int) Mathf.Ceil((DataSource.GetItemCount() - currentItemCount) / (float) _rows);
+                float sizeVirtRowsAfterContent = numVirtRowsAfterContent * (_cellHeight + Spacing) * lossyScale;
+
+                /*
+                Debug.LogFormat("{0}, {1}, {2}, {3}, {4}", sizeRowsHiddenBefore, sizeRowsHiddenAfter, numRowsHiddenBefore, 
+                                numRowsHiddenAfter, numRows);
+                */
+
+                Vector3 min = contentBounds.min, max = contentBounds.max;
+                max.x += sizeVirtRowsBeforeContent;
+                min.x -= sizeVirtRowsAfterContent;
+                contentBounds.SetMinMax(min, max);
+            }
+
+            return contentBounds;
+        }
+#endregion scrollbars
+        
         /// <summary>
         /// Creates cell Pool for recycling, Caches ICells
         /// </summary>
@@ -380,7 +474,7 @@ namespace PolyAndCode.UI
         #endregion
 
         #region  TESTING
-        public void OnDrawGizmos()
+        public override void OnDrawGizmos()
         {
             Gizmos.color = Color.green;
             Gizmos.DrawLine(_recyclableViewBounds.min - new Vector3(0, 2000), _recyclableViewBounds.min + new Vector3(0, 2000));
